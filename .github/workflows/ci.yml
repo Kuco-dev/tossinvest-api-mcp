@@ -23,16 +23,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['20.x', '22.x']
+        # 개발 툴체인(pnpm 11)이 Node >=22.13 을 요구하므로 22 부터 검증한다.
+        # 런타임 자체는 Node 20.10+ 에서 동작하며, docker 잡이 이를 별도로 검증한다.
+        node: ['22.x', '24.x']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
@@ -81,7 +83,7 @@ jobs:
     name: docker build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: docker/setup-buildx-action@v3
 
