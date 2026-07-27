@@ -1,0 +1,14 @@
+# 저장소에는 LF로 저장하고 체크아웃 시 OS 기본을 따른다.
+* text=auto eol=lf
+
+# 셸 스크립트는 Windows에서도 반드시 LF여야 한다 (Docker 빌드 등).
+*.sh text eol=lf
+
+# 바이너리
+*.png binary
+*.jpg binary
+*.ico binary
+
+# GitHub 언어 통계에서 제외 (자동 생성/외부 명세)
+src/openapi/openapi.snapshot.json linguist-generated=true
+pnpm-lock.yaml linguist-generated=true

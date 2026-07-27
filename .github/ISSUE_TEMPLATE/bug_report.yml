@@ -1,0 +1,90 @@
+name: 버그 리포트
+description: 동작하지 않는 문제를 신고합니다.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!CAUTION]
+        > **client_id, client_secret, access token, 계좌번호를 절대 붙여넣지 마세요.**
+        > 로그를 첨부할 때는 민감 정보를 제거했는지 다시 확인해주세요.
+        >
+        > 보안 취약점은 공개 이슈가 아니라 [SECURITY.md](../blob/main/SECURITY.md) 절차로 제보해주세요.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 확인 사항
+      options:
+        - label: 이 이슈에 인증정보·계좌번호를 포함하지 않았습니다.
+          required: true
+        - label: 최신 버전에서 재현했습니다.
+          required: true
+        - label: README의 [문제 해결](../blob/main/README.md#문제-해결) 항목을 확인했습니다.
+          required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 무슨 일이 일어났나요?
+      description: 기대한 동작과 실제 동작을 함께 적어주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 재현 방법
+      placeholder: |
+        1. `pnpm build` 실행
+        2. Claude Desktop에서 `getPrices` 호출
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 오류 메시지 / stderr 로그
+      description: |
+        `TOSSINVEST_LOG_LEVEL=debug`로 실행한 stderr 로그가 도움이 됩니다.
+        서버가 비밀값을 자동 redaction하지만, 붙여넣기 전 직접 한 번 더 확인해주세요.
+      render: shell
+
+  - type: input
+    id: error-code
+    attributes:
+      label: 정규화된 오류 코드
+      description: 응답의 `error.code` 값 (예 `rate-limit-exceeded`, `account-header-required`)
+      placeholder: auth-failed
+
+  - type: dropdown
+    id: run-mode
+    attributes:
+      label: 실행 방식
+      options:
+        - 로컬 Node (pnpm start)
+        - Docker
+        - 기타
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: MCP 클라이언트
+      placeholder: Claude Desktop / Claude Code / Cursor / Codex CLI / MCP Inspector
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 환경
+      placeholder: |
+        OS: Windows 11
+        Node: v22.x
+        pnpm: 9.x
+        프로젝트 버전 또는 커밋: 
+    validations:
+      required: true

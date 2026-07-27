@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 이 워크플로는 토스증권 API 인증정보를 사용하지 않습니다.
+# 모든 테스트는 HTTP mock 기반이며 실제 주문 API를 호출하지 않습니다.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20.x', '22.x']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      # 번들 snapshot이 유효하고 모든 operation이 MCP 도구로 변환 가능한지 검증한다.
+      - name: Verify OpenAPI snapshot
+        run: pnpm openapi:verify
+
+      # 빌드 산출물만으로 서버가 오프라인 기동되는지 확인한다.
+      # (dist에 openapi.snapshot.json이 빠지면 여기서 실패한다.)
+      - name: Smoke test (offline startup)
+        env:
+          TOSSINVEST_SPEC_CACHE_ENABLED: 'false'
+        run: |
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1.0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            | node dist/index.js > /tmp/mcp-stdout.json
+          node -e "
+            const fs = require('node:fs');
+            const lines = fs.readFileSync('/tmp/mcp-stdout.json', 'utf8').split('\n').filter(Boolean);
+            const listed = lines.map(JSON.parse).find((m) => m.id === 2);
+            if (!listed) throw new Error('tools/list 응답이 없습니다.');
+            const count = listed.result.tools.length;
+            console.log('tools:', count);
+            if (count < 30) throw new Error('등록된 도구 수가 예상보다 적습니다: ' + count);
+          "
+
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          push: false
+          load: true
+          tags: tossinvest-api-mcp:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # stdio 서버이므로 -i 로 실행하고 stdout이 JSON-RPC만 담고 있는지 확인한다.
+      - name: Smoke test container
+        run: |
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1.0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            | docker run --rm -i -e TOSSINVEST_SPEC_CACHE_ENABLED=false tossinvest-api-mcp:ci > /tmp/out.json
+          node -e "
+            const fs = require('node:fs');
+            const lines = fs.readFileSync('/tmp/out.json', 'utf8').split('\n').filter(Boolean);
+            const listed = lines.map(JSON.parse).find((m) => m.id === 2);
+            if (!listed) throw new Error('컨테이너 tools/list 응답이 없습니다.');
+            console.log('container tools:', listed.result.tools.length);
+          "
