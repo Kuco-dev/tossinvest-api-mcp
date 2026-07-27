@@ -6,20 +6,13 @@
 
 공식 OpenAPI 명세의 모든 operation을 읽어 MCP 도구를 자동 생성합니다.
 
-[![CI](https://github.com/YOUR_GITHUB_ID/tossinvest-api-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_GITHUB_ID/tossinvest-api-mcp/actions/workflows/ci.yml)
+[![CI](https://github.com/Kuco-dev/tossinvest-api-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Kuco-dev/tossinvest-api-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20.10-brightgreen.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](https://www.typescriptlang.org/)
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.29.0-purple.svg)](https://github.com/modelcontextprotocol/typescript-sdk)
 
 </div>
-
-<!--
-  📌 리포지토리 생성 후 아래 두 곳의 YOUR_GITHUB_ID 를 실제 GitHub 계정명으로 바꾸세요.
-     1) 위 CI 뱃지 URL 2개
-     2) "설치" 섹션의 git clone URL
-  그 전까지 CI 뱃지는 깨진 이미지로 표시됩니다.
--->
 
 
 
@@ -100,7 +93,7 @@ MCP 클라이언트 등록은 [MCP 클라이언트 설정](#mcp-클라이언트-
 ## 설치
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_ID/tossinvest-api-mcp.git
+git clone https://github.com/Kuco-dev/tossinvest-api-mcp.git
 cd tossinvest-api-mcp
 pnpm install
 pnpm build
