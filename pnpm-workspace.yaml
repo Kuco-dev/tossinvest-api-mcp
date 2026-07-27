@@ -1,3 +1,12 @@
 # vitest/tsx가 사용하는 esbuild의 네이티브 바이너리 설치 스크립트만 허용한다.
 allowBuilds:
   esbuild: true
+
+auditConfig:
+  ignoreGhsas:
+    # GHSA-frvp-7c67-39w9: @hono/node-server <2.0.5 serve-static path traversal.
+    # MCP SDK 의 HTTP transport 전용 전이 의존성이며, 이 프로젝트는 stdio transport 만
+    # 사용해 해당 모듈이 import 되지 않는다 (src/dist 전체에서 hono 미참조 확인).
+    # SDK 가 ^1.x 를 요구하므로 2.0.5 강제 승격은 SDK 호환성을 깨뜨릴 수 있어 예외 처리.
+    # SDK 가 패치 버전을 반영하면 이 예외를 제거할 것.
+    - GHSA-frvp-7c67-39w9
