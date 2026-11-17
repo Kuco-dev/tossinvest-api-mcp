@@ -29,8 +29,9 @@
 - **실제 API 호출** — OAuth 2.0 Client Credentials 자동 발급·만료 관리·동시 발급 방지(single-flight)
 - **다층 주문 안전장치** — 실주문 기본 비활성화, `dryRun` 기본 `true`, 8개 조건 충족 시에만 실행, mutation 자동 재시도 전면 금지
 - **금융 데이터 정밀도 보존** — 금액·수량·가격을 문자열로 유지해 부동소수점 손실을 방지
-- **보안 기본값** — 토큰 메모리 보관, 로그·오류 redaction, 공식 도메인 외 차단(SSRF 방지), path traversal·prototype pollution 방어
+- **보안 기본값** — 토큰 메모리 보관, 로그·오류 redaction, 공식 도메인 외 차단(SSRF 방지, opt-in OpenBB 연동은 loopback 기본의 별도 정책), path traversal·prototype pollution 방어
 - **Docker 지원** — 하드닝된 멀티스테이지 이미지 + Compose 제공
+- **OpenBB Platform 연동 (선택)** — 재무제표·밸류에이션 지표·기업 개요·장기 가격·뉴스를 토스증권 심볼 그대로 조회하고, 보유 종목과 지표를 결합 ([자세히](#openbb-platform-연동-선택))
 
 현재 명세(v1.2.5) 기준 **29개 operation**(읽기 23 / mutation 6)과 **관리 도구 7개**를 제공합니다.
 
@@ -76,9 +77,10 @@ MCP 클라이언트 등록은 [MCP 클라이언트 설정](#mcp-클라이언트-
 18. [테스트](#테스트)
 19. [OpenAPI snapshot 갱신](#openapi-snapshot-갱신)
 20. [MCP SDK 버전 선택](#mcp-sdk-버전-선택)
-21. [프로젝트 구조](#프로젝트-구조)
-22. [기여](#기여)
-23. [라이선스](#라이선스)
+21. [OpenBB Platform 연동 (선택)](#openbb-platform-연동-선택)
+22. [프로젝트 구조](#프로젝트-구조)
+23. [기여](#기여)
+24. [라이선스](#라이선스)
 
 ---
 
@@ -155,6 +157,11 @@ TOSSINVEST_CLIENT_SECRET=발급받은_client_secret
 | `TOSSINVEST_MAX_RESPONSE_BYTES` | `8388608` | 응답 크기 상한 |
 | `TOSSINVEST_LOG_LEVEL` | `info` | `silent`/`error`/`warn`/`info`/`debug` |
 | `TOSSINVEST_ENABLE_RAW_REQUESTS` | `false` | raw request 도구 노출 여부 |
+| `TOSSINVEST_OPENBB_ENABLED` | `false` | OpenBB 연동 도구(`openbb_*`) 노출 여부 |
+| `TOSSINVEST_OPENBB_BASE_URL` | `http://127.0.0.1:6900` | OpenBB Platform API 주소 (origin만) |
+| `TOSSINVEST_OPENBB_ALLOW_REMOTE` | `false` | loopback 외 OpenBB 서버 허용 (https 필수) |
+| `TOSSINVEST_OPENBB_USERNAME` / `PASSWORD` | (없음) | OpenBB 서버를 `OPENBB_API_AUTH=true`로 띄운 경우의 Basic 인증 |
+| `TOSSINVEST_OPENBB_PROVIDER` | `yfinance` | 기본 데이터 provider (yfinance는 API 키 불필요) |
 
 인증 정보가 없어도 서버는 정상 기동합니다. 명세 조회·검색·상세 조회·인증 상태 조회는 인증 없이 동작하며,
 실제 API 호출 시점에만 `credentials-missing` 오류를 반환합니다.
@@ -453,6 +460,21 @@ stdout은 JSON-RPC 전용이며 모든 로그는 stderr로만 출력됩니다.
 | `tossinvest_auth_status` | 인증 설정·토큰 준비 상태 (secret/token 미노출) |
 | `tossinvest_refresh_auth` | 토큰 명시적 갱신 (`{ ok, expiresIn, expiresAt }`만 반환) |
 | `tossinvest_raw_request` | `TOSSINVEST_ENABLE_RAW_REQUESTS=true`일 때만 노출. 공식 명세에 정의된 method+path만 허용 |
+
+### OpenBB 연동 도구 (`TOSSINVEST_OPENBB_ENABLED=true`일 때만 노출)
+
+모두 읽기 전용입니다. 사용법은 [OpenBB Platform 연동](#openbb-platform-연동-선택)을 참고하세요.
+
+| 도구 | OpenBB 라우트 | 설명 |
+| --- | --- | --- |
+| `openbb_status` | `/openapi.json` | 연결 상태, 인증 설정 여부, 기본 provider, 라우트 수 |
+| `openbb_resolve_symbols` | — | 토스증권 심볼 → OpenBB 심볼 변환 결과 |
+| `openbb_equity_quote` | `/equity/price/quote` | 52주 고저, 50/200일 이동평균, 평균 거래량 |
+| `openbb_equity_historical` | `/equity/price/historical` | 수년 단위 OHLCV |
+| `openbb_equity_profile` | `/equity/profile` | 업종·산업·사업 설명 |
+| `openbb_equity_fundamentals` | `/equity/fundamental/{income,balance,cash,metrics,dividends}` | 재무제표·주요 지표·배당 |
+| `openbb_company_news` | `/news/company` | 종목 뉴스 |
+| `openbb_holdings_insight` | `getHoldings` + `getStocks` + `/equity/fundamental/metrics` | 보유 종목별 토스증권 평가 정보 + OpenBB 지표 결합 |
 
 ### OpenAPI 기반 직접 도구 자동 생성
 
@@ -770,6 +792,7 @@ TOSSINVEST_LOG_LEVEL=debug
 - 계좌 식별값은 로그·dry-run 요약에서 마스킹됩니다.
 - 사용자는 `Authorization`, `Cookie`, `Host`, `Content-Length`, `Proxy-Authorization`, `X-Tossinvest-Account` 헤더를 직접 지정할 수 없습니다.
 - 기본적으로 공식 도메인(`openapi.tossinvest.com`)만 호출할 수 있습니다 (SSRF 방지).
+- OpenBB 연동을 켜면 `TOSSINVEST_OPENBB_BASE_URL`(기본 loopback)이 두 번째 호출 대상이 됩니다. 토스증권 토큰은 이 호스트로 전송되지 않습니다.
 - 공식 OpenAPI에 정의되지 않은 path는 호출할 수 없습니다.
 - path traversal, prototype pollution, 과대 응답, JSON 파싱 오류를 방어합니다.
 - 실주문은 기본 비활성화이며 dry-run이 기본값입니다.
@@ -828,6 +851,75 @@ pnpm openapi:verify   # operation 수, operationId 중복, 스키마 변환 가�
   - `structuredContent`가 안정 버전에서 지원되므로, 사람이 읽는 text와 기계가 처리하는 구조화 결과를 함께 반환합니다.
   - `experimental/*` 경로의 API는 사용하지 않았습니다.
 
+## OpenBB Platform 연동 (선택)
+
+[OpenBB](https://github.com/openbq-org/OpenBB)(Apache-2.0)는 여러 금융 데이터 provider를 하나의 REST API로 묶어 주는 오픈소스 데이터 플랫폼입니다.
+토스증권 API가 주는 **국내/미국 시세·계좌·주문**에 OpenBB의 **재무제표·밸류에이션 지표·기업 개요·장기 가격·뉴스**를 더합니다.
+
+### 왜 단순 프록시가 아닌가
+
+OpenBB에는 KRX 종목을 `005930.KS`(KOSPI)·`035900.KQ`(KOSDAQ)처럼 시장 suffix를 붙여 보내야 합니다.
+**suffix를 잘못 붙이면 OpenBB는 오류 없이 빈 결과를 돌려줍니다** (실측: KOSPI 종목인 카카오를 `035720.KQ`로 보내면 결과에서 빠짐).
+그래서 이 서버는 시장을 추측하지 않고 **토스증권 `getStocks`의 `market` 필드로 suffix를 결정**합니다.
+
+| 토스증권 `market` | OpenBB 심볼 |
+| --- | --- |
+| `KOSPI` | `005930` → `005930.KS` |
+| `KOSDAQ` | `247540` → `247540.KQ` |
+| `NYSE`/`NASDAQ`/`AMEX`/`US_ETC` | `AAPL` → `AAPL`, `BRK.B` → `BRK-B` |
+| `KR_ETC` (KONEX 등) | 미지원 |
+
+- `market` 인자를 직접 주면 토스증권 조회 없이 변환합니다.
+- 토스증권 인증이 없으면 미국 티커만 추론하고, KRX 코드는 `market`을 지정하라는 오류를 반환합니다.
+
+### 실행 방법
+
+```bash
+# 1) OpenBB Platform API 실행 — Python 3.12 별도 환경 (uv 예시)
+uv venv -p 3.12 .venv-openbb
+VIRTUAL_ENV=.venv-openbb uv pip install openbb-core openbb-platform-api openbb-equity openbb-news openbb-yfinance
+.venv-openbb/bin/openbb-api --host 127.0.0.1 --port 6900
+
+# 2) 이 서버에서 연동 활성화 (MCP 클라이언트가 이 서버를 실행하는 환경에 설정 후 재시작)
+TOSSINVEST_OPENBB_ENABLED=true
+```
+
+> **Python 버전 주의** — Python 3.12에서 설치·실행을 확인했습니다(OpenBB core 2.0.1 / yfinance 확장 2.1.0).
+> Python 3.15에서는 `pywry`·`cachebox` 등 네이티브 의존성 빌드가 실패했습니다. 그 외 버전은 검증하지 않았습니다.
+
+사용 예시 (MCP 클라이언트에서):
+
+- "삼성전자 최근 4개 분기 손익계산서 보여줘" → `openbb_equity_fundamentals { symbol: "005930", statement: "income", period: "quarter" }`
+- "내 보유 종목들 PER·ROE 같이 보여줘" → `openbb_holdings_insight {}`
+- "애플 2020년부터 주봉" → `openbb_equity_historical { symbol: "AAPL", startDate: "2020-01-01", interval: "1W" }`
+
+### 알려진 provider 동작
+
+- **조용한 누락** — 잘못된 suffix뿐 아니라 provider가 데이터를 갖고 있지 않은 종목도 오류 없이 결과에서 빠집니다
+  (실측: yfinance `metrics`가 `086520.KQ`를 누락, 같은 심볼의 `quote`는 정상). 응답의 `missingSymbols`(보유 종목 결합은 `missingMetrics`)로 확인하세요.
+- **뉴스 `limit` 무시** — yfinance는 `limit`을 무시하므로 이 서버가 결과를 잘라 반환합니다.
+
+### 안전 설계
+
+- **별도 클라이언트** — 토스증권 access token은 OpenBB 요청에 절대 붙지 않습니다.
+- **별도 URL 정책** — 기본은 loopback(`localhost`/`127.0.0.1`/`[::1]`)만 허용. 원격 서버는 `TOSSINVEST_OPENBB_ALLOW_REMOTE=true` + https 필수. URL에 자격증명·경로·쿼리 금지.
+- **GET 전용 + 경로 화이트리스트** — 정해진 `/api/v1/...` 라우트만 호출하며 임의 경로를 받지 않습니다.
+- **공통 정책 재사용** — 토스증권과 같은 타임아웃·응답 크기 상한·GET 재시도 정책을 따르며, Basic 인증 비밀값은 redaction에 등록됩니다.
+- **opt-in** — 비활성화 시 도구 목록과 동작은 기존과 완전히 동일합니다.
+- **데이터 흐름** — 조회한 종목 심볼(`openbb_holdings_insight`는 보유 종목 심볼)이 OpenBB 서버와 그 뒤의 데이터 provider(기본 Yahoo Finance)로 전송됩니다. 수량·금액 등 계좌 정보는 전송하지 않습니다.
+
+### 정밀도 주의
+
+토스증권 값은 decimal string이지만 **OpenBB 값은 JSON number(부동소수점)**입니다. OpenBB 데이터는 참고용 분석 데이터이며,
+주문 가격·수량 산정에는 토스증권 시세 API 값을 사용하세요. 각 응답에 `note`로 이 내용이 포함됩니다.
+
+### Docker에서 사용할 때 (미검증 구성)
+
+`TOSSINVEST_OPENBB_*` 변수는 기존과 같이 `.env`(`env_file`)로 컨테이너에 전달됩니다.
+컨테이너 안의 `127.0.0.1`은 호스트가 아닙니다. OpenBB를 같은 Compose 네트워크의 별도 컨테이너로 띄우고
+TLS 종단(리버스 프록시)을 둔 뒤 `TOSSINVEST_OPENBB_ALLOW_REMOTE=true` + `https://` URL을 사용하세요.
+평문 http 원격 접속은 정책상 허용하지 않습니다.
+
 ## 프로젝트 구조
 
 ```text
@@ -843,6 +935,7 @@ tossinvest-api-mcp/
 │  ├─ tools/                    # mutation 분류·guard, operation/관리 도구
 │  ├─ security/                 # redaction, URL 정책, 민감 필드 정의
 │  ├─ errors/                   # AppError, 오류 정규화
+│  ├─ integrations/openbb/      # OpenBB 설정·URL 정책, 전용 클라이언트, 심볼 변환, 도구
 │  └─ utils/                    # logger(stderr), single-flight, JSON
 ├─ tests/                       # Vitest (실제 API 호출 없음)
 ├─ scripts/                     # snapshot 갱신·검증, 빌드 자산 복사

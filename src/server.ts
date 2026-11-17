@@ -12,6 +12,8 @@ import { TossClient } from './client/toss-client.js';
 import { SERVER_NAME, SERVER_VERSION } from './config/constants.js';
 import { loadConfig, type AppConfig } from './config/env.js';
 import { normalizeError } from './errors/error-normalizer.js';
+import { OpenBbClient } from './integrations/openbb/openbb-client.js';
+import { OpenBbTools } from './integrations/openbb/openbb-tools.js';
 import { loadOpenApiSpec, type LoadedSpec } from './openapi/loader.js';
 import { buildOperationIndex, OperationRegistry } from './openapi/operation-index.js';
 import { ManagementTools } from './tools/management-tools.js';
@@ -83,6 +85,24 @@ export async function createServer(options: CreateServerOptions = {}): Promise<B
     executor,
   });
 
+  // OpenBB 연동은 opt-in. 비활성화 시 도구 목록/동작이 기존과 완전히 동일하다.
+  // TossClient 와 별도 클라이언트를 사용하므로 토스증권 토큰이 OpenBB 서버로 전송되지 않는다.
+  const openbbTools = config.openbb.enabled
+    ? new OpenBbTools({
+        config: config.openbb,
+        client: new OpenBbClient({
+          config: config.openbb,
+          requestTimeoutMs: config.requestTimeoutMs,
+          maxResponseBytes: config.maxResponseBytes,
+          maxReadRetries: config.maxReadRetries,
+          logger,
+          ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+        }),
+        executor,
+        logger,
+      })
+    : undefined;
+
   const server = new Server(
     { name: SERVER_NAME, version: SERVER_VERSION },
     {
@@ -91,7 +111,10 @@ export async function createServer(options: CreateServerOptions = {}): Promise<B
         '토스증권 Open API MCP 서버입니다. 공식 OpenAPI 명세의 모든 operation 이 도구로 등록되어 있습니다.\n' +
         '- 계좌가 필요한 도구는 account(accountSeq) 를 지정하거나 TOSSINVEST_DEFAULT_ACCOUNT 를 설정하세요. 계좌 목록은 getAccounts 로 조회합니다.\n' +
         '- 주문/조건주문 도구는 기본적으로 dryRun=true 이며 실제 주문을 내지 않습니다.\n' +
-        '- 이 서버는 투자 조언을 제공하지 않습니다.',
+        '- 이 서버는 투자 조언을 제공하지 않습니다.' +
+        (openbbTools
+          ? '\n- openbb_* 도구는 로컬 OpenBB Platform API 로 재무제표·기업개요·장기 가격·뉴스를 조회합니다. 토스증권 심볼(005930, AAPL)을 그대로 넣으면 시장 suffix 를 자동 변환합니다.'
+          : ''),
     }
   );
 
@@ -110,7 +133,14 @@ export async function createServer(options: CreateServerOptions = {}): Promise<B
       annotations: tool.annotations,
     }));
 
-    return { tools: [...managementDefinitions, ...operationDefinitions] };
+    const openbbDefinitions: Tool[] = (openbbTools?.definitions ?? []).map((definition) => ({
+      name: definition.name,
+      description: definition.description,
+      inputSchema: definition.inputSchema as Tool['inputSchema'],
+      annotations: definition.annotations,
+    }));
+
+    return { tools: [...managementDefinitions, ...openbbDefinitions, ...operationDefinitions] };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
@@ -119,7 +149,9 @@ export async function createServer(options: CreateServerOptions = {}): Promise<B
     try {
       const result = managementTools.handles(name)
         ? await managementTools.call(name, rawArgs)
-        : await executor.executeByToolName(name, rawArgs);
+        : openbbTools?.handles(name)
+          ? await openbbTools.call(name, rawArgs)
+          : await executor.executeByToolName(name, rawArgs);
 
       return toCallToolResult(result, false);
     } catch (error) {
@@ -145,7 +177,11 @@ export async function createServer(options: CreateServerOptions = {}): Promise<B
     async connect() {
       await server.connect(transport);
       logger.info('MCP stdio 서버가 시작되었습니다.', {
-        tools: registry.size + managementTools.definitions.length,
+        tools:
+          registry.size +
+          managementTools.definitions.length +
+          (openbbTools?.definitions.length ?? 0),
+        openbbEnabled: config.openbb.enabled,
         tradingEnabled: config.enableTrading,
         conditionalOrdersEnabled: config.enableConditionalOrders,
       });

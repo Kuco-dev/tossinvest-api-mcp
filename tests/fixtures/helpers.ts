@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AppConfig } from '../../src/config/env.js';
+import { DISABLED_OPENBB_CONFIG } from '../../src/integrations/openbb/config.js';
 import type { OpenApiDocument } from '../../src/openapi/types.js';
 import type { Logger } from '../../src/utils/logger.js';
 
@@ -40,6 +41,7 @@ export function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     maxResponseBytes: 8 * 1024 * 1024,
     logLevel: 'silent',
     enableRawRequests: false,
+    openbb: DISABLED_OPENBB_CONFIG,
     ...overrides,
   };
 }
