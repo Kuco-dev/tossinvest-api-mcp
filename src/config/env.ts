@@ -6,6 +6,13 @@ import {
   DEFAULT_OPENAPI_URL,
   OFFICIAL_HOSTS,
 } from './constants.js';
+import {
+  assertOpenBbUrlAllowed,
+  assertProviderAllowed,
+  DEFAULT_OPENBB_BASE_URL,
+  DEFAULT_OPENBB_PROVIDER,
+  type OpenBbConfig,
+} from '../integrations/openbb/config.js';
 
 const booleanish = (defaultValue: boolean) =>
   z
@@ -74,6 +81,20 @@ const envSchema = z.object({
     .optional()
     .transform((raw) => raw ?? 'info'),
   TOSSINVEST_ENABLE_RAW_REQUESTS: booleanish(false),
+
+  // OpenBB Platform API 연동 (선택). 기본 비활성화.
+  TOSSINVEST_OPENBB_ENABLED: booleanish(false),
+  TOSSINVEST_OPENBB_BASE_URL: z
+    .string()
+    .optional()
+    .transform((raw) => (raw?.trim() ? raw.trim().replace(/\/+$/, '') : DEFAULT_OPENBB_BASE_URL)),
+  TOSSINVEST_OPENBB_ALLOW_REMOTE: booleanish(false),
+  TOSSINVEST_OPENBB_USERNAME: trimmedOptional,
+  TOSSINVEST_OPENBB_PASSWORD: trimmedOptional,
+  TOSSINVEST_OPENBB_PROVIDER: z
+    .string()
+    .optional()
+    .transform((raw) => (raw?.trim() ? raw.trim() : DEFAULT_OPENBB_PROVIDER)),
 });
 
 export type LogLevel = 'silent' | 'error' | 'warn' | 'info' | 'debug';
@@ -100,6 +121,9 @@ export interface AppConfig {
 
   readonly logLevel: LogLevel;
   readonly enableRawRequests: boolean;
+
+  /** OpenBB Platform API 연동 설정. enabled=false 면 관련 도구를 노출하지 않는다. */
+  readonly openbb: OpenBbConfig;
 }
 
 export class ConfigError extends Error {
@@ -181,6 +205,11 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
   // 인증 정보가 없어도 서버는 기동해야 하므로 여기서는 URL 정책만 강제한다.
   assertBaseUrlAllowed(raw.TOSSINVEST_BASE_URL, allowCustom);
   assertSpecUrlAllowed(raw.TOSSINVEST_OPENAPI_URL, allowCustom);
+  // OpenBB 는 토스증권과 완전히 별개의 정책을 쓴다 (loopback 기본, 원격은 HTTPS + 명시적 허용).
+  if (raw.TOSSINVEST_OPENBB_ENABLED) {
+    assertOpenBbUrlAllowed(raw.TOSSINVEST_OPENBB_BASE_URL, raw.TOSSINVEST_OPENBB_ALLOW_REMOTE);
+    assertProviderAllowed(raw.TOSSINVEST_OPENBB_PROVIDER);
+  }
 
   return {
     clientId: raw.TOSSINVEST_CLIENT_ID,
@@ -204,5 +233,14 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
 
     logLevel: raw.TOSSINVEST_LOG_LEVEL,
     enableRawRequests: raw.TOSSINVEST_ENABLE_RAW_REQUESTS,
+
+    openbb: {
+      enabled: raw.TOSSINVEST_OPENBB_ENABLED,
+      baseUrl: raw.TOSSINVEST_OPENBB_BASE_URL,
+      allowRemote: raw.TOSSINVEST_OPENBB_ALLOW_REMOTE,
+      username: raw.TOSSINVEST_OPENBB_USERNAME,
+      password: raw.TOSSINVEST_OPENBB_PASSWORD,
+      provider: raw.TOSSINVEST_OPENBB_PROVIDER.toLowerCase(),
+    },
   };
 }
